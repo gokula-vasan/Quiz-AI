@@ -149,6 +149,7 @@ async def submit_quiz(
         score = result_state.get("score") or 0
         evaluation = result_state.get("evaluation") or []
         weak_topics = result_state.get("weak_topics") or []
+        strong_topics = result_state.get("strong_topics") or []
         study_plan = result_state.get("study_plan")
         progress_summary = result_state.get("progress_summary")
         
@@ -163,6 +164,7 @@ async def submit_quiz(
             percentage=percentage,
             evaluated_questions=evaluation,
             weak_topics=weak_topics,
+            strong_topics=strong_topics,
             study_plan=study_plan,
             progress_summary=progress_summary,
             attempted_at=datetime.utcnow()

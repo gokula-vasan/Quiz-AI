@@ -13,6 +13,8 @@ class QuizQuestion(BaseModel):
     correct_answer: Optional[str] = None  # Populated for fill_in_the_blank, short_answer, coding
     code_template: Optional[str] = None  # Starter template for coding questions
     explanation: str
+    topic: Optional[str] = None
+    chapter: Optional[str] = None
 
 class QuizDB(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
@@ -54,6 +56,7 @@ class QuizAttemptDB(BaseModel):
     percentage: float
     evaluated_questions: List[dict]  # Contains question details, selected vs correct option, explanation
     weak_topics: List[str]
+    strong_topics: List[str] = Field(default_factory=list)
     study_plan: Optional[str] = None
     progress_summary: Optional[str] = None
     attempted_at: datetime = Field(default_factory=datetime.utcnow)
@@ -71,6 +74,7 @@ class QuizAttemptResponse(BaseModel):
     percentage: float
     evaluated_questions: List[dict]
     weak_topics: List[str]
+    strong_topics: List[str] = Field(default_factory=list)
     study_plan: Optional[str] = None
     progress_summary: Optional[str] = None
     attempted_at: datetime

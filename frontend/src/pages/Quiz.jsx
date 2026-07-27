@@ -214,6 +214,22 @@ const Quiz = () => {
               )}
             </div>
 
+            {result.strong_topics && result.strong_topics.length > 0 && (
+              <div className="bg-[#0e1626]/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg">
+                <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">
+                  <CheckCircle size={18} className="text-emerald-400" />
+                  <span>Identified Strong Topics</span>
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  {result.strong_topics.map((t, idx) => (
+                    <span key={idx} className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="bg-[#0e1626]/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-md shadow-lg relative overflow-hidden">
               <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-purple-500/5 to-transparent rounded-bl-full pointer-events-none"></div>
               <h3 className="text-lg font-bold text-slate-200 mb-4 flex items-center gap-2">

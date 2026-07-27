@@ -11,6 +11,7 @@ class AgentState(TypedDict):
     score: Optional[int]
     evaluation: Optional[List[Dict[str, Any]]]
     weak_topics: Optional[List[str]]
+    strong_topics: Optional[List[str]]
     study_plan: Optional[str]
     progress_logged: Optional[bool]
     difficulty: Optional[str]

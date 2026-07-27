@@ -322,6 +322,8 @@ class QuestionSchema(BaseModel):
     correct_answer: Optional[str] = None
     code_template: Optional[str] = None
     explanation: str
+    topic: Optional[str] = None
+    chapter: Optional[str] = None
 
 class QuizGenerationResponse(BaseModel):
     quiz_title: str
@@ -336,11 +338,14 @@ class EvaluatedQuestionSchema(BaseModel):
     text_response: Optional[str] = None
     is_correct: bool
     explanation: str
+    topic: Optional[str] = None
+    chapter: Optional[str] = None
 
 class EvaluationResponse(BaseModel):
     score: int
     evaluated_questions: List[EvaluatedQuestionSchema]
     weak_topics: List[str]
+    strong_topics: List[str]
 
 # ================= Local Fallback Quiz Generator =================
 
@@ -364,6 +369,7 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
         current = padded_concepts[idx]
         correct_topic = current.get("topic", "Topic")
         description = current.get("summary", "Topic description.")
+        chapter = current.get("chapter", "Core Concepts")
         q_id = f"q{idx+1}"
         
         # Select question types based on quiz_mode
@@ -394,7 +400,9 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "question_text": f"Which concept matches the following description: '{short_desc}'?",
                 "options": options,
                 "correct_option": correct_index,
-                "explanation": f"The term '{correct_topic}' is defined as: {description}"
+                "explanation": f"The term '{correct_topic}' is defined as: {description}",
+                "topic": correct_topic,
+                "chapter": chapter
             })
             
         elif q_type == "true_false":
@@ -408,7 +416,9 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "question_text": f"True or False: {stmt}",
                 "options": ["True", "False"],
                 "correct_option": correct_option,
-                "explanation": f"This statement is {'correct' if correct_val else 'incorrect'} based on the topic '{correct_topic}'."
+                "explanation": f"This statement is {'correct' if correct_val else 'incorrect'} based on the topic '{correct_topic}'.",
+                "topic": correct_topic,
+                "chapter": chapter
             })
             
         elif q_type == "fill_in_the_blank":
@@ -421,7 +431,9 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "type": "fill_in_the_blank",
                 "question_text": sentence,
                 "correct_answer": blank_word,
-                "explanation": f"The blank word is '{blank_word}', completing the concept for '{correct_topic}'."
+                "explanation": f"The blank word is '{blank_word}', completing the concept for '{correct_topic}'.",
+                "topic": correct_topic,
+                "chapter": chapter
             })
             
         elif q_type == "short_answer":
@@ -430,7 +442,9 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "type": "short_answer",
                 "question_text": f"In your own words, briefly explain the core utility and main purpose of '{correct_topic}'?",
                 "correct_answer": description,
-                "explanation": f"A standard answer should mention: {description}"
+                "explanation": f"A standard answer should mention: {description}",
+                "topic": correct_topic,
+                "chapter": chapter
             })
             
         elif q_type == "coding":
@@ -440,7 +454,9 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "question_text": f"Write a Python helper function structure to model or check '{correct_topic}' parameter parameters.",
                 "code_template": f"def test_{correct_topic.lower().replace(' ', '_')}(data):\n    # Write logic to review '{correct_topic}'\n    return True\n",
                 "correct_answer": "Should return boolean flag representing validation check.",
-                "explanation": f"This skeleton models basic logic processing validations for {correct_topic} parameters."
+                "explanation": f"This skeleton models basic logic processing validations for {correct_topic} parameters.",
+                "topic": correct_topic,
+                "chapter": chapter
             })
             
     return {
@@ -456,13 +472,21 @@ def local_evaluate_quiz(questions: list, answers: list) -> dict:
     """
     score = 0
     evaluated = []
-    weak_topics = []
+    
+    # Track correct / total per topic/chapter
+    topic_scores = {} # {topic: {"correct": 0, "total": 0}}
     
     for q in questions:
         q_id = q.get("id")
         q_type = q.get("type", "mcq")
         q_text = q.get("question_text", "")
         explanation = q.get("explanation", "")
+        topic = q.get("topic") or "General Core"
+        chapter = q.get("chapter") or "Core Concepts"
+        
+        if topic not in topic_scores:
+            topic_scores[topic] = {"correct": 0, "total": 0}
+        topic_scores[topic]["total"] += 1
         
         ans = next((a for a in answers if a.get("question_id") == q_id), None)
         selected = ans.get("selected_option") if ans else -1
@@ -476,15 +500,13 @@ def local_evaluate_quiz(questions: list, answers: list) -> dict:
             ref = q.get("correct_answer") or ""
             is_correct = (text_resp.strip().lower() == ref.strip().lower()) if text_resp else False
         else:  # short_answer, coding
-            # Fallback heuristic: correct if they wrote a reasonable response (> 5 chars)
             is_correct = len(text_resp.strip()) > 5 if text_resp else False
             if not is_correct:
                 explanation = "Your answer was empty or too brief. Try to explain in more detail!"
                 
         if is_correct:
             score += 1
-        else:
-            weak_topics.append(q.get("chapter") or "Core Concepts")
+            topic_scores[topic]["correct"] += 1
             
         evaluated.append({
             "question_id": q_id,
@@ -492,13 +514,25 @@ def local_evaluate_quiz(questions: list, answers: list) -> dict:
             "selected_option": selected,
             "text_response": text_resp,
             "is_correct": is_correct,
-            "explanation": explanation
+            "explanation": explanation,
+            "topic": topic,
+            "chapter": chapter
         })
         
+    strong_topics = []
+    weak_topics = []
+    for topic, stats in topic_scores.items():
+        accuracy = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+        if accuracy >= 0.75:
+            strong_topics.append(topic)
+        else:
+            weak_topics.append(topic)
+            
     return {
         "score": score,
         "evaluated_questions": evaluated,
-        "weak_topics": list(set(weak_topics))
+        "weak_topics": weak_topics,
+        "strong_topics": strong_topics
     }
 
 # ================= Node Definitions =================
@@ -629,6 +663,7 @@ async def generate_quiz_node(state: AgentState) -> dict:
         
         Requirements:
         - Generate EXACTLY {question_count} high-quality questions using only the extracted key concepts.
+        - For each question, populate `topic` with the concept topic name (e.g. 'Arrays', 'Strings') and `chapter` with the concept's chapter name.
         - Mix Easy (30%), Medium (50%), and Hard (20%) questions across the quiz.
         - Each Multiple Choice Question (MCQ) must have exactly four realistic option choices with only one correct answer.
         - Avoid duplicate questions.
@@ -685,7 +720,8 @@ async def evaluate_answers_node(state: AgentState) -> dict:
         return {
             "score": eval_data["score"],
             "evaluation": eval_data["evaluated_questions"],
-            "weak_topics": eval_data["weak_topics"]
+            "weak_topics": eval_data["weak_topics"],
+            "strong_topics": eval_data["strong_topics"]
         }
         
     try:
@@ -705,7 +741,9 @@ async def evaluate_answers_node(state: AgentState) -> dict:
         - Fill in the Blanks: Check if text_response matches correct_answer (allow minor case/spacing variations).
         - Short Answer / Coding: Review text_response qualitatively against correct_answer reference parameters and logic. If correct, mark is_correct=true.
         
-        Provide the score (out of 10), evaluated questions list with personalized explanation feedback for why their answer is correct/incorrect, and list of weak topics.
+        For each evaluated question, copy its corresponding `topic` and `chapter` from the input questions payload.
+        
+        Provide the score, evaluated questions list with personalized explanation feedback for why their answer is correct/incorrect, list of weak topics (accuracy < 75%), and list of strong topics (accuracy >= 75%).
         
         Quiz Details:
         {json.dumps(payload, indent=2)}
@@ -726,7 +764,8 @@ async def evaluate_answers_node(state: AgentState) -> dict:
         return {
             "score": eval_data.get("score") or 0,
             "evaluation": eval_data.get("evaluated_questions") or [],
-            "weak_topics": eval_data.get("weak_topics") or []
+            "weak_topics": eval_data.get("weak_topics") or [],
+            "strong_topics": eval_data.get("strong_topics") or []
         }
         
     except Exception as e:
@@ -735,48 +774,65 @@ async def evaluate_answers_node(state: AgentState) -> dict:
         return {
             "score": eval_data["score"],
             "evaluation": eval_data["evaluated_questions"],
-            "weak_topics": eval_data["weak_topics"]
+            "weak_topics": eval_data["weak_topics"],
+            "strong_topics": eval_data["strong_topics"]
         }
 
-def get_fallback_study_plan(score: int, total: int, weak_topics: list, history: str) -> str:
+def get_fallback_study_plan(score: int, total: int, weak_topics: list, strong_topics: list, history: str) -> str:
     """
     Generates a structured, encouraging fallback study plan locally.
     """
     accuracy = int(round((score / total) * 100)) if total else 0
     past_info = f"\n*Status Update*: {history}\n" if history else ""
     
-    if score == total:
-        return f"""### 🎉 Excellent Job! Perfect Score!
-{past_info}
-You have mastered all the evaluated concepts.
+    # Calculate estimated study time: 30 minutes per weak topic, at least 30 minutes if any
+    weak_count = len(weak_topics)
+    est_minutes = max(30, weak_count * 30) if weak_count > 0 else 0
+    est_hours_str = f"{est_minutes // 60} Hours {est_minutes % 60} Minutes" if est_minutes >= 60 else f"{est_minutes} Minutes"
+    if est_minutes == 0:
+        est_hours_str = "0 minutes (Perfect score!)"
+        
+    # Formulate numbered study plan steps
+    plan_steps = []
+    if weak_topics:
+        step_num = 1
+        for topic in weak_topics:
+            plan_steps.append(f"{step_num}. Revise {topic} Core Concepts (30 minutes)")
+            step_num += 1
+            plan_steps.append(f"{step_num}. Practice 10-15 MCQs on {topic}")
+            step_num += 1
+        plan_steps.append(f"{step_num}. Take a follow-up Quiz on these weak areas tomorrow.")
+    else:
+        plan_steps.append("1. Outstanding work! You have mastered all concepts.")
+        plan_steps.append("2. Challenge yourself by changing the quiz difficulty to Hard.")
+        plan_steps.append("3. Try out the Coding Mode for hands-on programming challenges.")
+        
+    steps_formatted = "\n".join([f"{step}" for step in plan_steps])
+    
+    strong_list = ", ".join(strong_topics) if strong_topics else "None yet"
+    weak_list = ", ".join(weak_topics) if weak_topics else "None"
+    
+    return f"""### 📚 Personalized Study Plan
+{steps_formatted}
 
-### 🚀 Recommended Next Steps
-* **Status**: Ready for the next unit.
-* **Practice Strategy**: Try setting the difficulty level to **Hard** or switch to **Coding Only** mode to challenge your programming skills.
-* **Timeline**: Re-take a practice review quiz in 3-5 days to ensure long-term retention.
-"""
+### ⏱️ Estimated Study Time
+* **Total Duration**: {est_hours_str}
 
-    topics_list = ", ".join(weak_topics) if weak_topics else "General Core Concepts"
-    return f"""### 📚 Recommended Revision Focus
-{past_info}
-Your current score is **{score}/{total}** ({accuracy}% accuracy). We recommend focusing your attention on the following weak topics:
-* **Key Topics**: `{topics_list}`
-* *Tutor Advice*: Review the document summaries and key points for these specific chapters before trying again.
-
-### ⏱️ Recommended Study Time Allocation
-* **Core Revision**: Allocate **20–30 minutes** to review `{topics_list}`.
-* **Active Recall**: Spend **10 minutes** summarizing the concept summaries in your own words.
-
-### 📝 Practice Questions Strategy
-* Focus on **Theory Only** mode with **5–10 questions** on Medium difficulty to rebuild confidence, then move back to Mixed mode.
+### 📊 Performance Summary & Learning Gap
+* **Current Score**: {score}/{total} ({accuracy}% accuracy)
+* **Strong Areas**: {strong_list}
+* **Weak Areas**: {weak_list}
+* **Learning Gap Analysis**: {f"You have a learning gap in {weak_count} topic(s). Focus on these specific areas to reach 100% mastery." if weak_topics else "No learning gap detected! All concepts mastered."}
+* **History comparison**: {history if history else "This is your first attempt on this quiz topic."}
 
 ### 🚀 Next Steps & Timeline
-* Re-study the marked concepts today, and take a follow-up quiz **tomorrow** to see your improvement!
+* Re-study the marked concepts today, and take a follow-up quiz tomorrow to verify your progress!
 """
 
 async def recommendation_node(state: AgentState) -> dict:
     logger.info("Recommendation Agent: Running...")
     weak_topics = state.get("weak_topics", [])
+    strong_topics = state.get("strong_topics", []) or []
     score = state.get("score") or 0
     total = len(state.get("quiz_questions", [])) or 10
     user_id = state.get("user_id")
@@ -797,7 +853,7 @@ async def recommendation_node(state: AgentState) -> dict:
     is_placeholder = any(x in api_key.lower() for x in ["placeholder", "your_actual", "here"]) or not api_key.strip()
 
     if is_placeholder:
-        plan = get_fallback_study_plan(score, total, weak_topics, history_summary)
+        plan = get_fallback_study_plan(score, total, weak_topics, strong_topics, history_summary)
         return {"study_plan": plan}
 
     try:
@@ -808,18 +864,20 @@ async def recommendation_node(state: AgentState) -> dict:
         Your task is to analyze the student's quiz performance and write a highly personalized, actionable Markdown study plan.
         
         Quiz Score: {score}/{total}
+        Strong Topics Identified: {', '.join(strong_topics) if strong_topics else 'None yet'}
         Weak Topics Identified: {', '.join(weak_topics) if weak_topics else 'None (Perfect Score!)'}
         {history_summary}
         
         Please generate a study plan structured with standard markdown headings:
-        ### 📚 Recommended Revision Focus
-        - Detail which weak topics they need to revise and why.
+        ### 📚 Personalized Study Plan
+        - Provide numbered steps detailing what to study next (e.g. 1. Revise Graph Basics (30 minutes)).
+        - Give exact study steps to help bridge the learning gap.
         
-        ### ⏱️ Recommended Study Time Allocation
-        - Suggest exact revision time (e.g. 20 mins for [Topic A], 15 mins for [Topic B]).
+        ### ⏱️ Estimated Study Time
+        - Estimate the total study time needed to complete this plan (e.g. Estimated Study Time: 2 Hours).
         
-        ### 📝 Practice Questions Strategy
-        - Suggest whether they should practice MCQs, written short answers, or coding challenges next.
+        ### 📊 Performance Summary & Learning Gap
+        - Summarize the strong topics and identify the learning gap (what are they missing to get 100% score).
         
         ### 🚀 Next Steps & Timeline
         - Provide guidance on when to review the material again and when to take the next quiz.
@@ -836,7 +894,7 @@ async def recommendation_node(state: AgentState) -> dict:
         
     except Exception as e:
         logger.error(f"Error in Recommendation Agent: {e}. Falling back to local plan generator.")
-        plan = get_fallback_study_plan(score, total, weak_topics, history_summary)
+        plan = get_fallback_study_plan(score, total, weak_topics, strong_topics, history_summary)
         return {"study_plan": plan}
 
 
@@ -845,6 +903,9 @@ async def progress_tracking_node(state: AgentState) -> dict:
     user_id = state.get("user_id")
     score = state.get("score") or 0
     total = len(state.get("quiz_questions", [])) or 10
+    strong_topics = state.get("strong_topics", []) or []
+    weak_topics = state.get("weak_topics", []) or []
+    study_plan = state.get("study_plan", "") or "No custom plan generated."
     
     db = get_database()
     past_attempts = []
@@ -908,12 +969,17 @@ async def progress_tracking_node(state: AgentState) -> dict:
         Your task is to analyze the student's learning journey and write a highly motivating, short progress report (2-3 sentences).
         
         Current Quiz Attempt: Score {score}/{total}
+        Strong Topics identified in this quiz: {', '.join(strong_topics) if strong_topics else 'None'}
+        Weak Topics identified in this quiz: {', '.join(weak_topics) if weak_topics else 'None'}
+        Tutor Study Plan Recommendation:
+        {study_plan}
+        
         Historical Attempts Logs:
         {json.dumps(attempts_context, indent=2)}
         
         Please provide a concise overview of their progress:
         - Identify if their score is improving compared to previous quizzes.
-        - Highlight if they have cleared or still struggle with any specific weak topics.
+        - Highlight if they have cleared or still struggle with any specific weak topics based on these recommendations and history.
         - Encourage their consistency.
         
         Keep it encouraging and extremely short (max 80 words).
