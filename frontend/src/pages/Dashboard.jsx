@@ -190,13 +190,13 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-[#0e1626]/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-md flex flex-col justify-between shadow-xl">
+        <div className="lg:col-span-2 bg-[#0e1626]/60 border border-slate-800 rounded-2xl p-6 backdrop-blur-md flex flex-col shadow-xl">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-200">Performance Tracking</h2>
             <span className="text-xs font-semibold text-indigo-400">Score History</span>
           </div>
           
-          <div className="h-64 w-full">
+          <div className="flex-1 w-full min-h-[300px] mt-4">
             {timeline.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-500">
                 <BarChart3 size={40} className="mb-2 opacity-50" />
