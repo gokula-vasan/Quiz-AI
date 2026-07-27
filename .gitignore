@@ -1,0 +1,36 @@
+# Python virtual environment
+backend/venv/
+backend/.venv/
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Node dependencies
+frontend/node_modules/
+node_modules/
+
+# Environment files (sensitive keys)
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Build outputs
+frontend/dist/
+dist/
+build/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# System files
+.DS_Store
+Thumbs.db
