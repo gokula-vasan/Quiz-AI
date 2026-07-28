@@ -73,12 +73,13 @@ const Upload = () => {
   const handleGenerateQuiz = async (docId) => {
     setGenerating(prev => ({ ...prev, [docId]: true }));
     setError('');
-    const pref = preferences[docId] || { difficulty: 'Medium', question_count: 10, quiz_mode: 'theory' };
+    const pref = preferences[docId] || { difficulty: 'Medium', question_count: 10, quiz_mode: 'theory', selected_topic: '' };
     try {
       const res = await api.post(`/quizzes/generate/${docId}`, {
         difficulty: pref.difficulty || 'Medium',
         question_count: pref.question_count || 10,
-        quiz_mode: pref.quiz_mode || 'theory'
+        quiz_mode: pref.quiz_mode || 'theory',
+        selected_topic: pref.selected_topic || undefined
       });
       await fetchDocumentsAndQuizzes();
       navigate(`/quiz/${res.data.id}`);
@@ -257,6 +258,25 @@ const Upload = () => {
                               <option value="mixed">Mixed Mode</option>
                             </select>
                           </div>
+
+                          {doc.concepts && doc.concepts.length > 0 && (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-[9px] text-slate-500 uppercase font-black tracking-wider">Practice Topic</span>
+                              <select
+                                value={preferences[doc.id]?.selected_topic || ""}
+                                onChange={(e) => setPreferences(prev => ({
+                                  ...prev,
+                                  [doc.id]: { ...(prev[doc.id] || { difficulty: "Medium", question_count: 10, quiz_mode: "theory" }), selected_topic: e.target.value }
+                                }))}
+                                className="bg-[#0b101d] border border-slate-850 rounded-lg px-2 py-1 text-[10px] font-bold text-indigo-400 focus:outline-none focus:border-indigo-500/55 cursor-pointer max-w-[125px] truncate"
+                              >
+                                <option value="">All Topics</option>
+                                {Array.from(new Set(doc.concepts.map(c => c.topic))).map((topicName, idx) => (
+                                  <option key={idx} value={topicName}>{topicName}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
                         </div>
                       )}
 

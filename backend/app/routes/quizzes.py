@@ -7,11 +7,13 @@ from datetime import datetime
 from bson import ObjectId
 
 from pydantic import BaseModel
+from typing import Optional
 
 class QuizPreferenceRequest(BaseModel):
     difficulty: str = "Medium"
     question_count: int = 10
     quiz_mode: str = "theory"  # theory, coding, mixed
+    selected_topic: Optional[str] = None
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 
@@ -34,12 +36,17 @@ async def generate_quiz(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
         
     try:
+        # Load concepts if available, and filter if a specific topic was selected
+        concepts = doc.get("concepts") or None
+        if concepts and pref.selected_topic:
+            concepts = [c for c in concepts if c.get("topic") == pref.selected_topic]
+            
         # Invoke LangGraph Quiz Generation Workflow
         state_input = {
             "user_id": str(current_user["_id"]),
             "document_id": document_id,
             "document_text": doc["text_content"],
-            "concepts": None,
+            "concepts": concepts,
             "quiz_title": None,
             "quiz_questions": None,
             "user_answers": None,

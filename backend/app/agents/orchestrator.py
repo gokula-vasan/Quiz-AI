@@ -372,12 +372,17 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
     padded_concepts = list(concepts)
     while len(padded_concepts) < question_count:
         idx = len(padded_concepts)
-        padded_concepts.append({
-            "topic": f"Term Definition {idx+1}",
-            "summary": "Covers general review and study material parameters.",
-            "key_points": ["Study material analysis metrics."],
-            "difficulty": "Medium"
-        })
+        if concepts:
+            # Cycle through existing concepts to preserve selected topic
+            padded_concepts.append(concepts[idx % len(concepts)])
+        else:
+            padded_concepts.append({
+                "topic": f"Term Definition {idx+1}",
+                "summary": "Covers general review and study material parameters.",
+                "key_points": ["Study material analysis metrics."],
+                "difficulty": "Medium",
+                "chapter": "Core Concepts"
+            })
         
     for idx in range(question_count):
         current = padded_concepts[idx]
@@ -558,6 +563,11 @@ def local_evaluate_quiz(questions: list, answers: list) -> dict:
 
 async def analyze_content_node(state: AgentState) -> dict:
     logger.info("Content Analysis Agent: Running...")
+    concepts = state.get("concepts")
+    if concepts:
+        logger.info("Content Analysis Agent: Concepts already present in state. Skipping generation.")
+        return {"concepts": concepts}
+        
     text = state.get("document_text", "")
     doc_id = state.get("document_id", "")
     if not text:
@@ -705,7 +715,8 @@ async def generate_quiz_node(state: AgentState) -> dict:
             - Application-based Questions (15%) (e.g. "You need to search one million sorted records quickly. Which algorithm is the most suitable?")
             - Coding challenges (15%) (e.g. "Write a function to reverse a linked list")
             - True/False or Fill in the Blank concepts (10%)
-        12. For every question, populate: question_text, options, correct_option, correct_answer, explanation, topic, chapter, and difficulty.
+        12. For every question, you MUST populate: question_text, options, correct_option, correct_answer, explanation, topic, chapter, and difficulty.
+            The `topic` field MUST be exactly one of the topic names listed in the "Key Concepts" below (e.g. if the concept topic is "Data Structures", the question's topic MUST be "Data Structures"). Do NOT make up new topic names, do NOT use question text, templates, or descriptions as the topic name.
         13. The explanation should clearly explain WHY the correct option/answer is correct and WHY the others are incorrect.
         14. If the uploaded document has code snippets, formulas, tables, or diagrams, generate questions from them whenever possible.
         15. If the uploaded document does not contain enough information, do NOT invent questions. Generate questions only from the available content.

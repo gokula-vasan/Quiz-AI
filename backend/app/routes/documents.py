@@ -61,9 +61,19 @@ async def upload_document(
             doc_dict.pop("_id", None)
             
         result = await db.documents.insert_one(doc_dict)
-        doc_dict["_id"] = result.inserted_id
+        doc_id = str(result.inserted_id)
         
-        return DocumentResponse.model_validate(doc_dict)
+        # Trigger content analysis immediately so concepts are available
+        from app.agents.orchestrator import analyze_content_node
+        await analyze_content_node({
+            "document_text": text_content,
+            "document_id": doc_id,
+            "user_id": str(current_user["_id"])
+        })
+        
+        # Fetch the updated document with analyzed concepts
+        updated_doc = await db.documents.find_one({"_id": result.inserted_id})
+        return DocumentResponse.model_validate(updated_doc)
         
     except ValueError as val_err:
         raise HTTPException(
