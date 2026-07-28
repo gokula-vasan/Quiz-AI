@@ -238,14 +238,26 @@ def get_fallback_concepts(text: str) -> dict:
         paragraph = study_paragraphs[i]
         
         # Clean starting filler words from topic names
-        topic_text = paragraph
-        filler_prefixes = ["in this paper,", "we propose", "we present", "this section", "firstly,", "secondly,", "our results"]
-        for prefix in filler_prefixes:
-            if topic_text.lower().startswith(prefix):
-                topic_text = topic_text[len(prefix):].strip()
-                
+        topic_text = paragraph.strip()
+        filler_prefixes = [
+            "in this paper,", "we propose", "we present", "this section", 
+            "firstly,", "secondly,", "our results", "regarding", 
+            "when studying", "write a", "implement", "true or false:", 
+            "what is the", "what are", "explanation of", "understanding"
+        ]
+        
+        # Keep stripping prefixes case-insensitively
+        stripped = True
+        while stripped:
+            stripped = False
+            for prefix in filler_prefixes:
+                if topic_text.lower().startswith(prefix):
+                    topic_text = topic_text[len(prefix):].strip()
+                    stripped = True
+                    break
+                    
         words = topic_text.split()
-        topic = " ".join(words[:4]).replace(".", "").replace(",", "").replace(":", "").strip()
+        topic = " ".join(words[:3]).replace(".", "").replace(",", "").replace(":", "").replace("'", "").replace("\"", "").strip()
         
         # Clean trailing prepositions and small words from fallback topics
         stop_words = ["to", "or", "and", "the", "a", "an", "of", "in", "by", "for", "with", "as", "is", "are", "than", "from"]
@@ -324,6 +336,8 @@ class QuestionSchema(BaseModel):
     explanation: str
     topic: Optional[str] = None
     chapter: Optional[str] = None
+    difficulty: Optional[str] = None
+
 
 class QuizGenerationResponse(BaseModel):
     quiz_title: str
@@ -402,7 +416,8 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "correct_option": correct_index,
                 "explanation": f"The term '{correct_topic}' is defined as: {description}",
                 "topic": correct_topic,
-                "chapter": chapter
+                "chapter": chapter,
+                "difficulty": current.get("difficulty", "Medium")
             })
             
         elif q_type == "true_false":
@@ -418,7 +433,8 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "correct_option": correct_option,
                 "explanation": f"This statement is {'correct' if correct_val else 'incorrect'} based on the topic '{correct_topic}'.",
                 "topic": correct_topic,
-                "chapter": chapter
+                "chapter": chapter,
+                "difficulty": current.get("difficulty", "Medium")
             })
             
         elif q_type == "fill_in_the_blank":
@@ -433,7 +449,8 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "correct_answer": blank_word,
                 "explanation": f"The blank word is '{blank_word}', completing the concept for '{correct_topic}'.",
                 "topic": correct_topic,
-                "chapter": chapter
+                "chapter": chapter,
+                "difficulty": current.get("difficulty", "Medium")
             })
             
         elif q_type == "short_answer":
@@ -444,7 +461,8 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "correct_answer": description,
                 "explanation": f"A standard answer should mention: {description}",
                 "topic": correct_topic,
-                "chapter": chapter
+                "chapter": chapter,
+                "difficulty": current.get("difficulty", "Medium")
             })
             
         elif q_type == "coding":
@@ -456,7 +474,8 @@ def get_fallback_quiz(concepts: list, question_count: int = 10, quiz_mode: str =
                 "correct_answer": "Should return boolean flag representing validation check.",
                 "explanation": f"This skeleton models basic logic processing validations for {correct_topic} parameters.",
                 "topic": correct_topic,
-                "chapter": chapter
+                "chapter": chapter,
+                "difficulty": current.get("difficulty", "Medium")
             })
             
     return {
@@ -654,23 +673,43 @@ async def generate_quiz_node(state: AgentState) -> dict:
         
         prompt = f"""
         You are the Quiz Generation Agent in the QuizMaster AI platform.
-        Your task is to generate a personalized high-quality multi-format quiz based on the key concepts extracted from a study material.
+        Your persona: You are an expert university professor, competitive programming instructor, and technical interviewer.
+        
+        Your task is to generate a personalized HIGH-QUALITY quiz based on the key concepts extracted ONLY from the uploaded study material.
         
         The student has requested:
         - Target Difficulty Level: {difficulty}
         - Total Questions Requested: {question_count}
         - Quiz Mode: {quiz_mode.upper()}
         
-        Requirements:
-        - Generate EXACTLY {question_count} high-quality questions using only the extracted key concepts.
-        - For each question, populate `topic` with the concept topic name (e.g. 'Arrays', 'Strings') and `chapter` with the concept's chapter name.
-        - Mix Easy (30%), Medium (50%), and Hard (20%) questions across the quiz.
-        - Each Multiple Choice Question (MCQ) must have exactly four realistic option choices with only one correct answer.
-        - Avoid duplicate questions.
-        - Provide the correct answer (or correct_option index) and a brief explanation for every question.
-        
-        Format guidelines for this Quiz Mode:
-        {format_instructions}
+        STRICT RULES:
+        1. Read and understand the entire document/concepts before generating questions.
+        2. Extract only the important topics, subtopics, concepts, formulas, definitions, algorithms, and examples from the uploaded document.
+        3. Generate questions ONLY from the uploaded document. Do NOT use outside topics.
+        4. Every question must test conceptual understanding instead of simple memorization.
+        5. Never repeat the same concept in different wording.
+        6. Every question must be unique. Avoid duplicate or ambiguous questions.
+        7. Every Multiple Choice Question (MCQ) must contain exactly FOUR options.
+        8. Only ONE option must be correct. The remaining three options must be realistic distractors that belong to the same topic and look believable (e.g. stack, queue, priority queue, deque instead of stack, apple, elephant, car).
+        9. Randomize the position of the correct answer index (do not always keep it as option B or C).
+        10. Target Difficulty Distribution:
+            - 30% Easy questions
+            - 50% Medium questions
+            - 20% Hard questions
+        11. Format guidelines based on the current Quiz Mode ({quiz_mode.upper()}):
+            {format_instructions}
+            
+            Aim for a diverse mix of cognitive levels from Bloom's Taxonomy (Remember, Understand, Apply, Analyze, Evaluate, Create) including:
+            - Conceptual MCQs (40%)
+            - Scenario-based MCQs (20%) (e.g. "You are developing a browser's Back button. Which data structure should you use?")
+            - Application-based Questions (15%) (e.g. "You need to search one million sorted records quickly. Which algorithm is the most suitable?")
+            - Coding challenges (15%) (e.g. "Write a function to reverse a linked list")
+            - True/False or Fill in the Blank concepts (10%)
+        12. For every question, populate: question_text, options, correct_option, correct_answer, explanation, topic, chapter, and difficulty.
+        13. The explanation should clearly explain WHY the correct option/answer is correct and WHY the others are incorrect.
+        14. If the uploaded document has code snippets, formulas, tables, or diagrams, generate questions from them whenever possible.
+        15. If the uploaded document does not contain enough information, do NOT invent questions. Generate questions only from the available content.
+        16. Ensure the quiz is suitable for university-level students and technical interview preparation.
         
         Strictly format the JSON output using the QuizGenerationResponse schema.
         
@@ -760,12 +799,41 @@ async def evaluate_answers_node(state: AgentState) -> dict:
         )
         
         eval_data = json.loads(response.text)
+        evaluated = eval_data.get("evaluated_questions") or []
+        
+        # Programmatically map and ensure topic and chapter are copied from the original quiz questions list
+        for eq in evaluated:
+            q_id = eq.get("question_id")
+            original_q = next((q for q in questions if q.get("id") == q_id), None)
+            if original_q:
+                eq["topic"] = original_q.get("topic") or eq.get("topic") or "General Concept"
+                eq["chapter"] = original_q.get("chapter") or eq.get("chapter") or "Core Chapter"
+                
+        # Re-verify strong vs weak topics based on programmatic mapping correctness
+        topic_scores = {}
+        for eq in evaluated:
+            topic = eq.get("topic") or "General Concept"
+            if topic not in topic_scores:
+                topic_scores[topic] = {"correct": 0, "total": 0}
+            topic_scores[topic]["total"] += 1
+            if eq.get("is_correct", False):
+                topic_scores[topic]["correct"] += 1
+                
+        strong_topics = []
+        weak_topics = []
+        for topic, stats in topic_scores.items():
+            accuracy = stats["correct"] / stats["total"] if stats["total"] > 0 else 0
+            if accuracy >= 0.75:
+                strong_topics.append(topic)
+            else:
+                weak_topics.append(topic)
+
         logger.info(f"Evaluation Agent: Successfully graded attempt. Score: {eval_data.get('score')}/10")
         return {
             "score": eval_data.get("score") or 0,
-            "evaluation": eval_data.get("evaluated_questions") or [],
-            "weak_topics": eval_data.get("weak_topics") or [],
-            "strong_topics": eval_data.get("strong_topics") or []
+            "evaluation": evaluated,
+            "weak_topics": weak_topics,
+            "strong_topics": strong_topics
         }
         
     except Exception as e:

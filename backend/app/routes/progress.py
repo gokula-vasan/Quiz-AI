@@ -45,7 +45,9 @@ async def get_dashboard_data(current_user: dict = Depends(get_current_user)):
         
         # Accumulate correct/total counts per topic/concept
         for eq in att.get("evaluated_questions", []):
-            topic = eq.get("topic") or eq.get("question_text", "General Concept")
+            topic = eq.get("topic")
+            if not topic or topic.strip() == "":
+                topic = "Core Concepts"
             # Truncate overly long text fields to keep clean keywords
             if len(topic) > 40:
                 topic = topic[:37] + "..."

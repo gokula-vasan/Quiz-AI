@@ -15,6 +15,7 @@ class QuizQuestion(BaseModel):
     explanation: str
     topic: Optional[str] = None
     chapter: Optional[str] = None
+    difficulty: Optional[str] = None
 
 class QuizDB(BaseModel):
     id: Optional[PyObjectId] = Field(alias="_id", default=None)
